@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BookMind — AI Book Recommender</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Design Tokens ─────────────────────────────────────────────── */
+    :root {
+      --bg:          #0d0d0f;
+      --surface:     #15151a;
+      --surface2:    #1e1e26;
+      --border:      rgba(255,255,255,.07);
+      --gold:        #c9a84c;
+      --gold-light:  #e8c97e;
+      --cream:       #f0e9d8;
+      --muted:       #7a7a8c;
+      --danger:      #e05a5a;
+      --radius:      14px;
+      --ff-head:     'Playfair Display', Georgia, serif;
+      --ff-body:     'DM Sans', sans-serif;
+      --transition:  .25s cubic-bezier(.4,0,.2,1);
+    }
+
+    /* ── Reset & Base ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--cream);
+      font-family: var(--ff-body);
+      font-size: 15px;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Noise texture overlay ─────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Gold glow blob ────────────────────────────────────────────── */
+    body::after {
+      content: '';
+      position: fixed;
+      top: -200px; right: -200px;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(201,168,76,.12) 0%, transparent 70%);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Navbar ────────────────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(13,13,15,.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 clamp(1rem,5vw,4rem);
+      display: flex;
+      align-items: center;
+      gap: 2.5rem;
+      height: 62px;
+    }
+
+    .logo {
+      font-family: var(--ff-head);
+      font-size: 1.35rem;
+      color: var(--gold);
+      letter-spacing: .03em;
+      white-space: nowrap;
+    }
+    .logo span { font-style: italic; color: var(--gold-light); }
+
+    .nav-links { display: flex; gap: .25rem; }
+    .nav-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      font-family: var(--ff-body);
+      font-size: .88rem;
+      font-weight: 500;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      padding: .45rem 1rem;
+      border-radius: 8px;
+      transition: color var(--transition), background var(--transition);
+    }
+    .nav-btn:hover { color: var(--cream); background: var(--surface2); }
+    .nav-btn.active { color: var(--gold); background: rgba(201,168,76,.1); }
+
+    /* ── Main wrapper ──────────────────────────────────────────────── */
+    main {
+      position: relative; z-index: 1;
+      padding: clamp(2rem,5vw,4rem) clamp(1rem,5vw,4rem);
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ── Section visibility ────────────────────────────────────────── */
+    .section { display: none; animation: fadeUp .4s ease both; }
+    .section.active { display: block; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Hero header ───────────────────────────────────────────────── */
+    .hero {
+      margin-bottom: 3rem;
+    }
+    .hero h1 {
+      font-family: var(--ff-head);
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 700;
+      line-height: 1.15;
+      color: var(--cream);
+    }
+    .hero h1 em {
+      font-style: italic;
+      color: var(--gold);
+    }
+    .hero p {
+      margin-top: .75rem;
+      color: var(--muted);
+      font-size: .95rem;
+      max-width: 480px;
+    }
+
+    /* ── Search bar ────────────────────────────────────────────────── */
+    .search-wrap {
+      display: flex;
+      gap: .75rem;
+      margin: 2rem 0 1rem;
+      max-width: 640px;
+      position: relative;
+    }
+    .search-wrap input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: .85rem 1.25rem;
+      color: var(--cream);
+      font-family: var(--ff-body);
+      font-size: .95rem;
+      outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition);
+    }
+    .search-wrap input::placeholder { color: var(--muted); }
+    .search-wrap input:focus {
+      border-color: rgba(201,168,76,.5);
+      box-shadow: 0 0 0 3px rgba(201,168,76,.08);
+    }
+    .search-btn {
+      background: linear-gradient(135deg, var(--gold), var(--gold-light));
+      border: none;
+      border-radius: var(--radius);
+      color: #0d0d0f;
+      font-family: var(--ff-body);
+      font-weight: 600;
+      font-size: .9rem;
+      padding: .85rem 1.75rem;
+      cursor: pointer;
+      transition: transform var(--transition), box-shadow var(--transition), filter var(--transition);
+      white-space: nowrap;
+    }
+    .search-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px rgba(201,168,76,.3);
+      filter: brightness(1.08);
+    }
+    .search-btn:active { transform: translateY(0); }
+    .search-btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+
+    /* ── Autocomplete dropdown ─────────────────────────────────────── */
+    .autocomplete-list {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 88px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      max-height: 240px;
+      overflow-y: auto;
+      z-index: 200;
+      box-shadow: 0 16px 40px rgba(0,0,0,.4);
+    }
+    .autocomplete-list:empty { display: none; }
+    .autocomplete-item {
+      padding: .7rem 1.25rem;
+      cursor: pointer;
+      font-size: .88rem;
+      color: var(--cream);
+      border-bottom: 1px solid var(--border);
+      transition: background var(--transition);
+    }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover,
+    .autocomplete-item.highlighted { background: rgba(201,168,76,.1); color: var(--gold-light); }
+    .autocomplete-list::-webkit-scrollbar { width: 4px; }
+    .autocomplete-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* ── Status messages ───────────────────────────────────────────── */
+    .status-msg {
+      padding: 1rem 1.5rem;
+      border-radius: var(--radius);
+      font-size: .9rem;
+      margin: 1rem 0;
+      border: 1px solid;
+    }
+    .status-msg.info  { background: rgba(201,168,76,.08); border-color: rgba(201,168,76,.25); color: var(--gold-light); }
+    .status-msg.error { background: rgba(224,90,90,.08); border-color: rgba(224,90,90,.3);   color: var(--danger); }
+
+    /* ── Grid ──────────────────────────────────────────────────────── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1.5rem;
+    }
+
+    /* ── Book Card ─────────────────────────────────────────────────── */
+    .book-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+      cursor: default;
+    }
+    .book-card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 20px 48px rgba(0,0,0,.5);
+      border-color: rgba(201,168,76,.25);
+    }
+
+    .card-img-wrap {
+      position: relative;
+      aspect-ratio: 2/3;
+      background: var(--surface2);
+      overflow: hidden;
+    }
+    .card-img-wrap img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform .4s ease;
+    }
+    .book-card:hover .card-img-wrap img { transform: scale(1.04); }
+
+    .card-badge {
+      position: absolute; top: .6rem; right: .6rem;
+      background: rgba(13,13,15,.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: .2rem .5rem;
+      font-size: .72rem;
+      color: var(--gold);
+      font-weight: 600;
+      letter-spacing: .04em;
+      display: flex;
+      align-items: center;
+      gap: .25rem;
+    }
+
+    .card-body {
+      padding: .9rem 1rem 1rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: .3rem;
+    }
+    .card-title {
+      font-family: var(--ff-head);
+      font-size: .88rem;
+      font-weight: 700;
+      color: var(--cream);
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .card-author {
+      font-size: .78rem;
+      color: var(--muted);
+    }
+    .card-meta {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      margin-top: auto;
+      padding-top: .6rem;
+    }
+    .card-votes {
+      font-size: .72rem;
+      color: var(--muted);
+    }
+    .stars {
+      display: flex;
+      gap: 1px;
+    }
+    .star {
+      font-size: .65rem;
+      color: var(--gold);
+    }
+    .star.empty { color: var(--surface2); filter: brightness(2); }
+
+    /* ── Skeleton loader ───────────────────────────────────────────── */
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: var(--radius);
+    }
+    @keyframes shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .sk-card {
+      height: 320px;
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    /* ── Spinner ───────────────────────────────────────────────────── */
+    .spinner {
+      width: 24px; height: 24px;
+      border: 2.5px solid var(--border);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Section label ─────────────────────────────────────────────── */
+    .section-label {
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: var(--gold);
+      font-weight: 600;
+      margin-bottom: .5rem;
+    }
+
+    /* ── Footer ────────────────────────────────────────────────────── */
+    footer {
+      position: relative; z-index: 1;
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--muted);
+      font-size: .8rem;
+      border-top: 1px solid var(--border);
+    }
+    footer span { color: var(--gold); }
+  </style>
+</head>
+<body>
+
+  <!-- ── Navbar ─────────────────────────────────────────────────────── -->
+  <nav>
+    <div class="logo">Book<span>Mind</span></div>
+    <div class="nav-links">
+      <button class="nav-btn active" onclick="showSection('popular', this)">📚 Popular</button>
+      <button class="nav-btn"        onclick="showSection('recommend', this)">✨ Recommend</button>
+    </div>
+  </nav>
+
+  <!-- ── Main ───────────────────────────────────────────────────────── -->
+  <main>
+
+    <!-- Popular Books Section -->
+    <div id="popular" class="section active">
+      <div class="hero">
+        <div class="section-label">Curated Collection</div>
+        <h1>Top 50 <em>Beloved</em> Books</h1>
+        <p>Handpicked by thousands of readers — rated, reviewed, and recommended.</p>
+      </div>
+      <div id="popular-grid" class="grid">
+        <!-- Skeleton placeholders -->
+        <div class="sk-card skeleton"></div>
+        <div class="sk-card skeleton"></div>
+        <div class="sk-card skeleton"></div>
+        <div class="sk-card skeleton"></div>
+        <div class="sk-card skeleton"></div>
+        <div class="sk-card skeleton"></div>
+        <div class="sk-card skeleton"></div>
+        <div class="sk-card skeleton"></div>
+      </div>
+    </div>
+
+    <!-- Recommend Section -->
+    <div id="recommend" class="section">
+      <div class="hero">
+        <div class="section-label">AI-Powered Discovery</div>
+        <h1><em>Discover</em> Your Next Read</h1>
+        <p>Enter a book you love and we'll find 4 titles you're sure to enjoy.</p>
+      </div>
+
+      <div class="search-wrap" style="position:relative">
+        <input
+          id="book-input"
+          type="text"
+          placeholder="e.g. Harry Potter and the Sorcerer's Stone…"
+          autocomplete="off"
+          oninput="onInput(this.value)"
+          onkeydown="onKeydown(event)"
+        />
+        <button class="search-btn" id="rec-btn" onclick="fetchRecommendations()">Find Books</button>
+        <div class="autocomplete-list" id="autocomplete"></div>
+      </div>
+
+      <div id="rec-status"></div>
+      <div id="rec-grid" class="grid"></div>
+    </div>
+
+  </main>
+
+  <footer>Made with <span>♥</span> · BookMind © 2025</footer>
+
+  <!-- ── Script ─────────────────────────────────────────────────────── -->
+  <script>
+    const API = 'http://localhost:5000'; // change if hosted elsewhere
+    let allTitles = [];
+    let acIndex   = -1;
+
+    /* ── Navigation ─────────────────────────────────────────────────── */
+    function showSection(id, btn) {
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    /* ── Helpers ─────────────────────────────────────────────────────── */
+    function starHtml(rating) {
+      const full = Math.round(rating / 2);
+      return Array.from({length:5}, (_,i) =>
+        `<span class="star ${i < full ? '' : 'empty'}">★</span>`
+      ).join('');
+    }
+
+    function bookCard({title, author, image, votes, rating}) {
+      const ratingHtml = rating !== undefined
+        ? `<div class="stars">${starHtml(rating)}</div>
+           <span class="card-votes">${votes?.toLocaleString()} votes</span>`
+        : '';
+      return `
+        <div class="book-card">
+          <div class="card-img-wrap">
+            <img src="${image}" alt="${title}" loading="lazy"
+                 onerror="this.src='https://placehold.co/200x300/1e1e26/7a7a8c?text=No+Cover'" />
+            ${rating !== undefined ? `<div class="card-badge">⭐ ${rating.toFixed(1)}</div>` : ''}
+          </div>
+          <div class="card-body">
+            <div class="card-title">${title}</div>
+            <div class="card-author">${author}</div>
+            <div class="card-meta">${ratingHtml}</div>
+          </div>
+        </div>`;
+    }
+
+    function setStatus(id, msg, type='info') {
+      document.getElementById(id).innerHTML = msg
+        ? `<div class="status-msg ${type}">${msg}</div>` : '';
+    }
+
+    /* ── Popular books ───────────────────────────────────────────────── */
+    async function loadPopular() {
+      try {
+        const res  = await fetch(`${API}/api/popular`);
+        const data = await res.json();
+        document.getElementById('popular-grid').innerHTML =
+          data.map(b => bookCard(b)).join('');
+      } catch(e) {
+        document.getElementById('popular-grid').innerHTML =
+          `<div class="status-msg error" style="grid-column:1/-1">
+             ⚠ Could not connect to backend. Make sure Flask is running on port 5000.
+           </div>`;
+      }
+    }
+
+    /* ── Autocomplete ────────────────────────────────────────────────── */
+    async function loadTitles() {
+      try {
+        const res  = await fetch(`${API}/api/titles`);
+        allTitles  = await res.json();
+      } catch(_) {}
+    }
+
+    function onInput(val) {
+      acIndex = -1;
+      const q = val.toLowerCase().trim();
+      const ac = document.getElementById('autocomplete');
+      if (!q || q.length < 2) { ac.innerHTML=''; return; }
+      const hits = allTitles.filter(t => t.toLowerCase().includes(q)).slice(0,8);
+      ac.innerHTML = hits.map((t,i) =>
+        `<div class="autocomplete-item" data-i="${i}" onclick="selectAc('${t.replace(/'/g,"\\'")}')">
+           ${t}
+         </div>`
+      ).join('');
+    }
+
+    function selectAc(title) {
+      document.getElementById('book-input').value = title;
+      document.getElementById('autocomplete').innerHTML = '';
+    }
+
+    function onKeydown(e) {
+      const items = document.querySelectorAll('.autocomplete-item');
+      if (!items.length) {
+        if (e.key === 'Enter') fetchRecommendations();
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        acIndex = Math.min(acIndex+1, items.length-1);
+      } else if (e.key === 'ArrowUp') {
+        acIndex = Math.max(acIndex-1, -1);
+      } else if (e.key === 'Enter') {
+        if (acIndex >= 0) selectAc(items[acIndex].textContent.trim());
+        else fetchRecommendations();
+        return;
+      } else return;
+      items.forEach((el,i) => el.classList.toggle('highlighted', i===acIndex));
+      e.preventDefault();
+    }
+
+    // Close autocomplete on outside click
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.search-wrap'))
+        document.getElementById('autocomplete').innerHTML = '';
+    });
+
+    /* ── Recommendations ─────────────────────────────────────────────── */
+    async function fetchRecommendations() {
+      const title = document.getElementById('book-input').value.trim();
+      document.getElementById('autocomplete').innerHTML = '';
+      if (!title) { setStatus('rec-status','Please enter a book title.','error'); return; }
+
+      const btn = document.getElementById('rec-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+      setStatus('rec-status','');
+      document.getElementById('rec-grid').innerHTML = '';
+
+      try {
+        const res  = await fetch(`${API}/api/recommend`, {
+          method:  'POST',
+          headers: {'Content-Type':'application/json'},
+          body:    JSON.stringify({title}),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          setStatus('rec-status', `⚠ ${data.error || 'Something went wrong.'}`, 'error');
+        } else if (!data.length) {
+          setStatus('rec-status','No recommendations found for this title.','info');
+        } else {
+          setStatus('rec-status', `✓ Showing ${data.length} books similar to <strong>${title}</strong>`, 'info');
+          document.getElementById('rec-grid').innerHTML = data.map(b => bookCard(b)).join('');
+        }
+      } catch(e) {
+        setStatus('rec-status','⚠ Backend unreachable. Start Flask on port 5000.','error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Find Books';
+      }
+    }
+
+    /* ── Init ─────────────────────────────────────────────────────────── */
+    loadPopular();
+    loadTitles();
+  </script>
+</body>
+</html>
