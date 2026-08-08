@@ -4,6 +4,9 @@ Ek full-stack book recommender system with a **Flask REST API backend** aur ek *
 
 ---
 
+🔗 **Live Demo:** [Click Here to View Live App](https://bookmind-recommender.netlify.app/)
+⚙️ **Backend API:** [Live Render Backend](https://bookmind-backend-j1qh.onrender.com)
+
 ## 📁 Project Structure
 
 ```
